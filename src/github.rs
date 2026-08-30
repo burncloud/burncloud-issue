@@ -68,7 +68,11 @@ impl GithubClient {
         if title.trim().is_empty() {
             return Ok(Vec::new());
         }
-        let query = format!("repo:{} is:issue in:title {}", self.repository, title.trim());
+        let query = format!(
+            "repo:{} is:issue in:title {}",
+            self.repository,
+            title.trim()
+        );
         let request = self
             .client
             .get("https://api.github.com/search/issues")
@@ -131,10 +135,7 @@ fn resolve_token() -> Option<String> {
             }
         }
     }
-    let output = Command::new("gh")
-        .args(["auth", "token"])
-        .output()
-        .ok()?;
+    let output = Command::new("gh").args(["auth", "token"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
