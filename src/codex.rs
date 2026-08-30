@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
