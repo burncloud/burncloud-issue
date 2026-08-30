@@ -202,11 +202,10 @@ impl App {
         self.created_issue = None;
         self.quality_gate = QualityGate::default();
         self.preview_scroll = 0;
-        self.ai = Some(self.codex.start(
-            self.messages.clone(),
-            AgentMode::Chat,
-            Vec::new(),
-        ));
+        self.ai = Some(
+            self.codex
+                .start(self.messages.clone(), AgentMode::Chat, Vec::new()),
+        );
         self.ai_started = Some(Instant::now());
         self.status = "Codex 正在阅读上下文并准备下一轮问题… Ctrl+C 取消".into();
     }
@@ -216,9 +215,11 @@ impl App {
             self.status = "当前任务仍在运行，无法开始最终检查。".into();
             return;
         }
-        if !self.messages.iter().any(|message| {
-            matches!(message.role, crate::models::MessageRole::User)
-        }) {
+        if !self
+            .messages
+            .iter()
+            .any(|message| matches!(message.role, crate::models::MessageRole::User))
+        {
             self.status = "请先描述问题，再执行最终检查。".into();
             return;
         }
@@ -331,7 +332,8 @@ impl App {
                 self.create = None;
                 match result {
                     Ok(issue) => {
-                        self.status = format!("已创建 Issue #{} · {}", issue.number, issue.html_url);
+                        self.status =
+                            format!("已创建 Issue #{} · {}", issue.number, issue.html_url);
                         self.messages.push(ChatMessage::assistant(format!(
                             "Issue #{} 已创建：{}",
                             issue.number, issue.html_url
@@ -363,7 +365,9 @@ impl App {
         self.preview_scroll = 0;
         if finalized {
             if self.quality_gate.is_ready() {
-                self.status = "最终 Quality Gate = READY。按 F4 查看确认框；没有你的 Y 确认不会创建 Issue。".into();
+                self.status =
+                    "最终 Quality Gate = READY。按 F4 查看确认框；没有你的 Y 确认不会创建 Issue。"
+                        .into();
             } else {
                 self.status = format!(
                     "最终 Quality Gate = {}。请继续对话补充或缩小范围后再按 F2。",
@@ -480,7 +484,10 @@ impl App {
             return;
         }
         let mut chars: Vec<char> = self.input.chars().collect();
-        let index = self.cursor.saturating_sub(1).min(chars.len().saturating_sub(1));
+        let index = self
+            .cursor
+            .saturating_sub(1)
+            .min(chars.len().saturating_sub(1));
         chars.remove(index);
         self.cursor = self.cursor.saturating_sub(1);
         self.input = chars.into_iter().collect();
