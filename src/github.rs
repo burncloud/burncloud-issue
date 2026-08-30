@@ -16,7 +16,6 @@ pub struct GithubClient {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatedIssue {
     pub number: u64,
-    pub title: String,
     pub html_url: String,
 }
 
@@ -94,11 +93,11 @@ impl GithubClient {
     }
 
     pub fn create_issue(&self, draft: &IssueDraft) -> Result<CreatedIssue> {
-        let Some(_) = self.token else {
+        if self.token.is_none() {
             return Err(anyhow!(
                 "没有 GitHub 写入凭据。请设置 GITHUB_TOKEN / GH_TOKEN，或先执行 `gh auth login`。"
             ));
-        };
+        }
         let body = draft.to_markdown(&self.repository);
         let url = format!("https://api.github.com/repos/{}/issues", self.repository);
         let request = self.client.post(url).json(&CreateIssueRequest {
