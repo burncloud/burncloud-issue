@@ -133,12 +133,9 @@ fn draw_chat(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::raw(""));
     }
 
-    frame.render_widget(
-        Paragraph::new(Text::from(lines))
-            .wrap(Wrap { trim: false })
-            .scroll((app.chat_scroll, 0)),
-        inner,
-    );
+    let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+    let scroll = safe_scroll(&paragraph, app.chat_scroll, inner);
+    frame.render_widget(paragraph.scroll((scroll, 0)), inner);
 }
 
 fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
@@ -201,12 +198,27 @@ fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(block, area);
 
     let content = preview_text(app);
-    frame.render_widget(
-        Paragraph::new(content)
-            .wrap(Wrap { trim: false })
-            .scroll((app.preview_scroll, 0)),
-        inner,
-    );
+    let paragraph = Paragraph::new(content).wrap(Wrap { trim: false });
+    let scroll = safe_scroll(&paragraph, app.preview_scroll, inner);
+    frame.render_widget(paragraph.scroll((scroll, 0)), inner);
+}
+
+fn safe_scroll(paragraph: &Paragraph<'_>, requested: u16, area: Rect) -> u16 {
+    if area.width == 0 || area.height == 0 {
+        return 0;
+    }
+
+    let max_without_overflow = u16::MAX.saturating_sub(area.height);
+    let max_for_content = paragraph
+        .line_count(area.width)
+        .saturating_sub(area.height as usize)
+        .min(max_without_overflow as usize) as u16;
+
+    if requested == u16::MAX {
+        max_for_content
+    } else {
+        requested.min(max_for_content)
+    }
 }
 
 fn preview_text(app: &App) -> String {
@@ -343,5 +355,21 @@ mod tests {
     #[test]
     fn terminal_controls_are_removed_from_display_text() {
         assert_eq!(safe_text("abc\u{1b}[31mdef\rghi"), "abc[31mdefghi");
+    }
+
+    #[test]
+    fn end_scroll_sentinel_is_resolved_to_content_bottom() {
+        let paragraph = Paragraph::new("one\ntwo\nthree\nfour").wrap(Wrap { trim: false });
+        let area = Rect::new(0, 0, 20, 2);
+        assert_eq!(safe_scroll(&paragraph, u16::MAX, area), 2);
+    }
+
+    #[test]
+    fn resolved_scroll_cannot_overflow_ratatui_render_math() {
+        let content = "line\n".repeat(70_000);
+        let paragraph = Paragraph::new(content).wrap(Wrap { trim: false });
+        let area = Rect::new(0, 0, 20, 10);
+        let scroll = safe_scroll(&paragraph, u16::MAX, area);
+        assert!(scroll <= u16::MAX - area.height);
     }
 }
