@@ -180,7 +180,12 @@ fn build_prompt(
     } else {
         duplicates
             .iter()
-            .map(|item| format!("#{} [{}] {} {}", item.number, item.state, item.title, item.url))
+            .map(|item| {
+                format!(
+                    "#{} [{}] {} {}",
+                    item.number, item.state, item.title, item.url
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };
