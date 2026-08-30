@@ -46,9 +46,17 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         format!("{} (not found)", app.local_repo.display())
     };
     let busy = if let Some(started) = app.finalize_started {
-        format!("最终检查 {:02}:{:02}", started.elapsed().as_secs() / 60, started.elapsed().as_secs() % 60)
+        format!(
+            "最终检查 {:02}:{:02}",
+            started.elapsed().as_secs() / 60,
+            started.elapsed().as_secs() % 60
+        )
     } else if let Some(started) = app.ai_started {
-        format!("Codex {:02}:{:02}", started.elapsed().as_secs() / 60, started.elapsed().as_secs() % 60)
+        format!(
+            "Codex {:02}:{:02}",
+            started.elapsed().as_secs() / 60,
+            started.elapsed().as_secs() % 60
+        )
     } else if app.created_issue.is_some() {
         "已创建".into()
     } else {
@@ -82,7 +90,11 @@ fn draw_chat(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " 对话 "
     };
-    let border = if focused { Color::Blue } else { Color::DarkGray };
+    let border = if focused {
+        Color::Blue
+    } else {
+        Color::DarkGray
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border))
@@ -136,7 +148,11 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " 输入 "
     };
-    let border = if focused { Color::Blue } else { Color::DarkGray };
+    let border = if focused {
+        Color::Blue
+    } else {
+        Color::DarkGray
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border))
@@ -161,10 +177,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     );
 
     if focused {
-        frame.set_cursor_position((
-            inner.x.saturating_add(cursor_column),
-            inner.y,
-        ));
+        frame.set_cursor_position((inner.x.saturating_add(cursor_column), inner.y));
     }
 }
 
@@ -175,7 +188,11 @@ fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " Issue 草稿 "
     };
-    let border = if focused { Color::Blue } else { Color::DarkGray };
+    let border = if focused {
+        Color::Blue
+    } else {
+        Color::DarkGray
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border))
@@ -202,11 +219,18 @@ fn preview_text(app: &App) -> String {
         } else {
             &app.quality_gate.status
         },
-        if app.quality_finalized { " · FINAL" } else { "" }
+        if app.quality_finalized {
+            " · FINAL"
+        } else {
+            ""
+        }
     ));
     if !app.quality_gate.checks.is_empty() {
         for check in &app.quality_gate.checks {
-            out.push_str(&format!("  [{}] {} — {}\n", check.status, check.name, check.evidence));
+            out.push_str(&format!(
+                "  [{}] {} — {}\n",
+                check.status, check.name, check.evidence
+            ));
         }
     }
     for blocker in &app.quality_gate.blockers {
@@ -222,7 +246,10 @@ fn preview_text(app: &App) -> String {
         });
     } else {
         for item in &app.duplicates {
-            out.push_str(&format!("  #{} [{}] {}\n", item.number, item.state, item.title));
+            out.push_str(&format!(
+                "  #{} [{}] {}\n",
+                item.number, item.state, item.title
+            ));
         }
     }
 
@@ -244,10 +271,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
                 safe_text(&app.status),
                 Style::default().fg(Color::Gray),
             )),
-            Line::from(Span::styled(
-                controls,
-                Style::default().fg(Color::DarkGray),
-            )),
+            Line::from(Span::styled(controls, Style::default().fg(Color::DarkGray))),
         ]),
         area,
     );
