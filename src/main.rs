@@ -62,10 +62,7 @@ fn main() -> Result<()> {
     result
 }
 
-fn run(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> Result<()> {
+fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
     loop {
         app.tick();
         terminal.draw(|frame| ui::draw(frame, app))?;
