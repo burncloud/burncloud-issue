@@ -73,11 +73,7 @@ fn finalize(
             serde_json::to_string_pretty(&draft)?
         ),
     });
-    let quality = codex.start(
-        quality_messages,
-        AgentMode::QualityGate,
-        duplicates.clone(),
-    );
+    let quality = codex.start(quality_messages, AgentMode::QualityGate, duplicates.clone());
     let quality_response = wait_for_codex(quality, cancel)?;
     if quality_response.draft.is_some() {
         response.draft = quality_response.draft;
