@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, Focus},
+    app::{App, Focus, Screen},
     models::MessageRole,
 };
 
@@ -26,7 +26,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .split(root);
 
     draw_header(frame, app, rows[0]);
-    draw_body(frame, app, rows[1]);
+    match app.screen {
+        Screen::Tree => draw_tree_body(frame, app, rows[1]),
+        Screen::Chat => draw_chat_body(frame, app, rows[1]),
+    }
     draw_footer(frame, app, rows[2]);
 
     if app.confirm_create {
@@ -35,7 +38,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let title = format!(" BurnCloud Issue · {} ", app.repository);
+    let (done, total, percent) = app.snapshot.overall_progress();
+    let title = format!(
+        " BurnCloud Issue · {} · Required {}/{} · {}% ",
+        app.repository, done, total, percent
+    );
     let block = Block::default().borders(Borders::ALL).title(title);
     let inner = padded(block.inner(area));
     frame.render_widget(block, area);
@@ -45,30 +52,110 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         format!("{} (not found)", app.local_repo.display())
     };
-    let busy = if let Some(started) = app.finalize_started {
-        format!(
-            "最终检查 {:02}:{:02}",
-            started.elapsed().as_secs() / 60,
-            started.elapsed().as_secs() % 60
-        )
+    let activity = if let Some(started) = app.sync_started {
+        elapsed_label("GitHub sync", started.elapsed().as_secs())
+    } else if let Some(started) = app.finalize_started {
+        elapsed_label("Issue Quality Gate", started.elapsed().as_secs())
     } else if let Some(started) = app.ai_started {
-        format!(
-            "Codex {:02}:{:02}",
-            started.elapsed().as_secs() / 60,
-            started.elapsed().as_secs() % 60
-        )
-    } else if app.created_issue.is_some() {
-        "已创建".into()
+        elapsed_label("Codex", started.elapsed().as_secs())
     } else {
-        "对话中".into()
+        match app.screen {
+            Screen::Tree => format!("任务树 · Ready {}", app.snapshot.ready_issues().len()),
+            Screen::Chat => "Issue 对话".into(),
+        }
     };
     frame.render_widget(
-        Paragraph::new(format!("本地代码: {local}\n状态: {busy}")),
+        Paragraph::new(format!("本地代码: {local}\n状态: {activity}")),
         inner,
     );
 }
 
-fn draw_body(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_tree_body(frame: &mut Frame, app: &App, area: Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(area);
+    draw_tree(frame, app, columns[0]);
+    draw_detail(frame, app, columns[1]);
+}
+
+fn draw_tree(frame: &mut Frame, app: &App, area: Rect) {
+    let focused = app.focus == Focus::Tree;
+    let title = if focused {
+        " 任务树 [当前焦点 · ↑↓选择 · ←→层级 · Enter展开] "
+    } else {
+        " 任务树 "
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(focus_border(focused))
+        .title(title);
+    let inner = padded(block.inner(area));
+    frame.render_widget(block, area);
+
+    let rows = app.tree_rows();
+    if rows.is_empty() {
+        let message = if app.syncing() {
+            "正在同步 GitHub Issue / PR…"
+        } else {
+            "没有可显示的 Issue。按 R 刷新，按 C 创建任务。"
+        };
+        frame.render_widget(Paragraph::new(message), inner);
+        return;
+    }
+
+    let height = inner.height.max(1) as usize;
+    let start = app
+        .tree_selected
+        .saturating_add(1)
+        .saturating_sub(height)
+        .min(rows.len().saturating_sub(1));
+    let end = (start + height).min(rows.len());
+    let mut lines = Vec::new();
+    for (index, row) in rows[start..end].iter().enumerate() {
+        let absolute = start + index;
+        let prefix = if row.expandable {
+            if row.expanded { "▼" } else { "▶" }
+        } else {
+            "•"
+        };
+        let indent = "  ".repeat(row.depth);
+        let text = format!("{indent}{prefix} {}", row.label);
+        if absolute == app.tree_selected {
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )));
+        } else {
+            lines.push(Line::raw(text));
+        }
+    }
+    frame.render_widget(Paragraph::new(Text::from(lines)), inner);
+}
+
+fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
+    let focused = app.focus == Focus::Detail;
+    let title = if focused {
+        " 详情 [阅读模式 · ↑↓滚动 · PgUp/PgDn翻页 · ←返回] "
+    } else {
+        " 详情 [→ 或 Tab 进入] "
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(focus_border(focused))
+        .title(title);
+    let inner = padded(block.inner(area));
+    frame.render_widget(block, area);
+
+    let content = safe_text(&app.detail_text());
+    let paragraph = Paragraph::new(content).wrap(Wrap { trim: false });
+    let scroll = safe_scroll(&paragraph, app.detail_scroll, inner);
+    frame.render_widget(paragraph.scroll((scroll, 0)), inner);
+}
+
+fn draw_chat_body(frame: &mut Frame, app: &App, area: Rect) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
@@ -86,18 +173,13 @@ fn draw_body(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_chat(frame: &mut Frame, app: &App, area: Rect) {
     let focused = app.focus == Focus::Chat;
     let title = if focused {
-        " 对话 [当前焦点 · ↑↓滚动 · →预览] "
+        " Issue 对话 [当前焦点 · ↑↓滚动 · →预览] "
     } else {
-        " 对话 "
-    };
-    let border = if focused {
-        Color::Blue
-    } else {
-        Color::DarkGray
+        " Issue 对话 "
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(focus_border(focused))
         .title(title);
     let inner = padded(block.inner(area));
     frame.render_widget(block, area);
@@ -145,14 +227,9 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " 输入 "
     };
-    let border = if focused {
-        Color::Blue
-    } else {
-        Color::DarkGray
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(focus_border(focused))
         .title(title);
     let inner = padded(block.inner(area));
     frame.render_widget(block, area);
@@ -160,7 +237,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let width = inner.width.saturating_sub(1) as usize;
     let (visible, cursor_column) = app.input_view(width.max(2));
     let placeholder = if visible.is_empty() && !focused {
-        "描述问题或回答 Codex 的问题…"
+        "描述当前节点下面还需要完成的工程任务…"
     } else {
         &visible
     };
@@ -185,98 +262,28 @@ fn draw_preview(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " Issue 草稿 "
     };
-    let border = if focused {
-        Color::Blue
-    } else {
-        Color::DarkGray
-    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
+        .border_style(focus_border(focused))
         .title(title);
     let inner = padded(block.inner(area));
     frame.render_widget(block, area);
 
-    let content = preview_text(app);
+    let content = safe_text(&app.preview_text());
     let paragraph = Paragraph::new(content).wrap(Wrap { trim: false });
     let scroll = safe_scroll(&paragraph, app.preview_scroll, inner);
     frame.render_widget(paragraph.scroll((scroll, 0)), inner);
 }
 
-fn safe_scroll(paragraph: &Paragraph<'_>, requested: u16, area: Rect) -> u16 {
-    if area.width == 0 || area.height == 0 {
-        return 0;
-    }
-
-    let max_without_overflow = u16::MAX.saturating_sub(area.height);
-    let max_for_content = paragraph
-        .line_count(area.width)
-        .saturating_sub(area.height as usize)
-        .min(max_without_overflow as usize) as u16;
-
-    if requested == u16::MAX {
-        max_for_content
-    } else {
-        requested.min(max_for_content)
-    }
-}
-
-fn preview_text(app: &App) -> String {
-    let mut out = String::new();
-    out.push_str("Issue Quality Gate\n");
-    out.push_str(&format!(
-        "状态: {}{}\n",
-        if app.quality_gate.status.is_empty() {
-            "尚未最终检查"
-        } else {
-            &app.quality_gate.status
-        },
-        if app.quality_finalized {
-            " · FINAL"
-        } else {
-            ""
-        }
-    ));
-    if !app.quality_gate.checks.is_empty() {
-        for check in &app.quality_gate.checks {
-            out.push_str(&format!(
-                "  [{}] {} — {}\n",
-                check.status, check.name, check.evidence
-            ));
-        }
-    }
-    for blocker in &app.quality_gate.blockers {
-        out.push_str(&format!("  BLOCKER: {blocker}\n"));
-    }
-
-    out.push_str("\n重复 Issue 检查\n");
-    if app.duplicates.is_empty() {
-        out.push_str(if app.quality_finalized {
-            "  未发现候选，或 Quality Gate 未认定重复。\n"
-        } else {
-            "  按 F2 时自动搜索 GitHub。\n"
-        });
-    } else {
-        for item in &app.duplicates {
-            out.push_str(&format!(
-                "  #{} [{}] {}\n",
-                item.number, item.state, item.title
-            ));
-        }
-    }
-
-    out.push_str("\n────────────────────────\n\n");
-    if let Some(draft) = &app.draft {
-        out.push_str(&format!("# {}\n\n", safe_text(&draft.title)));
-        out.push_str(&safe_text(&draft.to_markdown(&app.repository)));
-    } else {
-        out.push_str("草稿尚未形成。继续和 Codex 对话；当信息足够时右侧会逐步出现 Issue。\n");
-    }
-    out
-}
-
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
-    let controls = "Tab切换  ↑↓滚动  ←→导航/光标  PgUp/PgDn翻页  Enter发送  F2最终检查  F4创建  Ctrl+C取消  Ctrl+Q退出";
+    let controls = match app.screen {
+        Screen::Tree => {
+            "↑↓选择  ←→层级/阅读  Enter展开  Tab切换  PgUp/PgDn详情  C创建子Issue  R刷新  Ctrl+Q退出"
+        }
+        Screen::Chat => {
+            "Enter发送  Tab切换  ↑↓滚动  F2最终检查  F4创建  Esc任务树  Ctrl+C取消AI  Ctrl+Q退出"
+        }
+    };
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
@@ -305,10 +312,52 @@ fn draw_confirmation(frame: &mut Frame, app: &App) {
         .map(|draft| safe_text(&draft.title))
         .unwrap_or_else(|| "<missing draft>".into());
     let text = format!(
-        "目标仓库：{}\n\nIssue：{}\n\nQuality Gate：{}\n\nBurnCloud Issue 不允许 AI 自行提交。只有你在这个确认框中明确同意，才会执行 GitHub Create Issue。\n\n[Y] 我确认创建\n[N / Esc] 返回继续修改",
-        app.repository, title, app.quality_gate.status
+        "目标仓库：{}\n\nIssue：{}\n\nQuality Gate：{}\n\n父 Issue：{}\nMilestone：{}\n\nBurnCloud Issue 不允许 AI 自行提交。只有你在这个确认框中明确同意，才会执行 GitHub Create Issue。\n\n[Y] 我确认创建\n[N / Esc] 返回继续修改",
+        app.repository,
+        title,
+        app.quality_gate.status,
+        app.draft
+            .as_ref()
+            .and_then(|draft| draft.parent_issue)
+            .map(|number| format!("#{number}"))
+            .unwrap_or_else(|| "None".into()),
+        app.draft
+            .as_ref()
+            .and_then(|draft| draft.milestone)
+            .map(|number| format!("#{number}"))
+            .unwrap_or_else(|| "None".into())
     );
     frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), inner);
+}
+
+fn focus_border(focused: bool) -> Style {
+    if focused {
+        Style::default().fg(Color::Blue)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
+fn elapsed_label(name: &str, seconds: u64) -> String {
+    format!("{name} {:02}:{:02}", seconds / 60, seconds % 60)
+}
+
+fn safe_scroll(paragraph: &Paragraph<'_>, requested: u16, area: Rect) -> u16 {
+    if area.width == 0 || area.height == 0 {
+        return 0;
+    }
+
+    let max_without_overflow = u16::MAX.saturating_sub(area.height);
+    let max_for_content = paragraph
+        .line_count(area.width)
+        .saturating_sub(area.height as usize)
+        .min(max_without_overflow as usize) as u16;
+
+    if requested == u16::MAX {
+        max_for_content
+    } else {
+        requested.min(max_for_content)
+    }
 }
 
 fn padded(area: Rect) -> Rect {
