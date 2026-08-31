@@ -300,7 +300,11 @@ impl App {
             } else {
                 &self.quality_gate.status
             },
-            if self.quality_finalized { " · FINAL" } else { "" }
+            if self.quality_finalized {
+                " · FINAL"
+            } else {
+                ""
+            }
         ));
         for check in &self.quality_gate.checks {
             out.push_str(&format!(
@@ -454,7 +458,8 @@ impl App {
                         self.snapshot = snapshot;
                         self.expanded.clear();
                         for milestone in &self.snapshot.milestones {
-                            self.expanded.insert(TreeNodeId::Milestone(milestone.number));
+                            self.expanded
+                                .insert(TreeNodeId::Milestone(milestone.number));
                         }
                         if self
                             .snapshot
@@ -790,7 +795,10 @@ impl App {
             depth,
             label: format!(
                 "[{}] {}#{} {}",
-                issue.status.label(), epic, issue.number, issue.title
+                issue.status.label(),
+                epic,
+                issue.number,
+                issue.title
             ),
             expandable,
             expanded: self.expanded.contains(&node),
@@ -830,9 +838,8 @@ impl App {
             })
             .unwrap_or_else(|| "未归类 / No Milestone".into());
         let (done, total, percent) = self.snapshot.milestone_progress(milestone);
-        let mut out = format!(
-            "{title}\n\nRequired Progress: {done}/{total} ({percent}%)\n\n状态统计\n"
-        );
+        let mut out =
+            format!("{title}\n\nRequired Progress: {done}/{total} ({percent}%)\n\n状态统计\n");
         for status in [
             TaskStatus::Ready,
             TaskStatus::InProgress,
@@ -853,7 +860,9 @@ impl App {
             .snapshot
             .issues
             .iter()
-            .filter(|issue| issue.milestone_number == milestone && issue.status == TaskStatus::Ready)
+            .filter(|issue| {
+                issue.milestone_number == milestone && issue.status == TaskStatus::Ready
+            })
             .take(20)
             .collect::<Vec<_>>();
         if ready.is_empty() {

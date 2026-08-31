@@ -115,7 +115,11 @@ fn draw_tree(frame: &mut Frame, app: &App, area: Rect) {
     for (index, row) in rows[start..end].iter().enumerate() {
         let absolute = start + index;
         let prefix = if row.expandable {
-            if row.expanded { "▼" } else { "▶" }
+            if row.expanded {
+                "▼"
+            } else {
+                "▶"
+            }
         } else {
             "•"
         };

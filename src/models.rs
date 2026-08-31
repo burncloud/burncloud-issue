@@ -160,7 +160,11 @@ impl ProjectSnapshot {
                 .any(|pr| pr.state.eq_ignore_ascii_case("open") && pr.draft)
             {
                 TaskStatus::InProgress
-            } else if issue.depends_on.iter().any(|number| !closed.contains(number)) {
+            } else if issue
+                .depends_on
+                .iter()
+                .any(|number| !closed.contains(number))
+            {
                 TaskStatus::Blocked
             } else {
                 TaskStatus::Ready
@@ -327,10 +331,7 @@ impl IssueDraft {
         out.push_str("<!-- burncloud-issue-tree\n");
         out.push_str(&format!("parent: {parent}\n"));
         out.push_str(&format!("depends_on: {depends_on}\n"));
-        out.push_str(&format!(
-            "required: {}\n",
-            self.required.unwrap_or(true)
-        ));
+        out.push_str(&format!("required: {}\n", self.required.unwrap_or(true)));
         out.push_str("-->\n\n");
         out.push_str(&format!(
             "Type: {}  \nSeverity: {}  \nRisk: {}  \nConfidence: {}  \nRepository: `{}`\n\n",

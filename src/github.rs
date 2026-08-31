@@ -1,4 +1,9 @@
-use std::{collections::{HashMap, HashSet}, env, process::Command, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    process::Command,
+    time::Duration,
+};
 
 use anyhow::{anyhow, Context, Result};
 use reqwest::blocking::{Client, RequestBuilder};
@@ -166,22 +171,31 @@ impl GithubClient {
 
         let mut milestones = HashMap::<u64, MilestoneSummary>::new();
         let mut issues = Vec::new();
-        for issue in api_issues.into_iter().filter(|issue| issue.pull_request.is_none()) {
+        for issue in api_issues
+            .into_iter()
+            .filter(|issue| issue.pull_request.is_none())
+        {
             let body = issue.body.unwrap_or_default();
             let relation = parse_tree_relation(&body);
-            let labels = issue.labels.into_iter().map(|label| label.name).collect::<Vec<_>>();
+            let labels = issue
+                .labels
+                .into_iter()
+                .map(|label| label.name)
+                .collect::<Vec<_>>();
             let is_epic = labels.iter().any(|label| {
                 label.eq_ignore_ascii_case("epic")
                     || label.eq_ignore_ascii_case("type:epic")
                     || label.eq_ignore_ascii_case("type/epic")
             });
             let (milestone_number, milestone_title) = if let Some(milestone) = issue.milestone {
-                milestones.entry(milestone.number).or_insert_with(|| MilestoneSummary {
-                    number: milestone.number,
-                    title: milestone.title.clone(),
-                    state: milestone.state,
-                    description: milestone.body.unwrap_or_default(),
-                });
+                milestones
+                    .entry(milestone.number)
+                    .or_insert_with(|| MilestoneSummary {
+                        number: milestone.number,
+                        title: milestone.title.clone(),
+                        state: milestone.state,
+                        description: milestone.body.unwrap_or_default(),
+                    });
                 (Some(milestone.number), Some(milestone.title))
             } else {
                 (None, None)
@@ -210,7 +224,9 @@ impl GithubClient {
             milestones: milestones.into_values().collect(),
             issues,
         };
-        snapshot.milestones.sort_by_key(|milestone| milestone.number);
+        snapshot
+            .milestones
+            .sort_by_key(|milestone| milestone.number);
         snapshot.issues.sort_by_key(|issue| issue.number);
         snapshot.recalculate_statuses();
         Ok(snapshot)
@@ -272,11 +288,17 @@ impl GithubClient {
     }
 
     fn list_issues(&self) -> Result<Vec<ApiIssue>> {
-        self.paginated("issues", &[("state", "all"), ("sort", "updated"), ("direction", "desc")])
+        self.paginated(
+            "issues",
+            &[("state", "all"), ("sort", "updated"), ("direction", "desc")],
+        )
     }
 
     fn list_pull_requests(&self) -> Result<Vec<ApiPullRequest>> {
-        self.paginated("pulls", &[("state", "all"), ("sort", "updated"), ("direction", "desc")])
+        self.paginated(
+            "pulls",
+            &[("state", "all"), ("sort", "updated"), ("direction", "desc")],
+        )
     }
 
     fn paginated<T>(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<Vec<T>>
@@ -285,16 +307,24 @@ impl GithubClient {
     {
         let mut out = Vec::new();
         for page in 1..=10u32 {
-            let url = format!("https://api.github.com/repos/{}/{}", self.repository, endpoint);
+            let url = format!(
+                "https://api.github.com/repos/{}/{}",
+                self.repository, endpoint
+            );
             let mut request = self.client.get(url).query(query);
             request = request.query(&[("per_page", "100"), ("page", &page.to_string())]);
-            let response = self.auth(request).send().with_context(|| format!("list GitHub {endpoint}"))?;
+            let response = self
+                .auth(request)
+                .send()
+                .with_context(|| format!("list GitHub {endpoint}"))?;
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().unwrap_or_default();
                 return Err(anyhow!("GitHub {endpoint} 读取失败 {status}: {body}"));
             }
-            let page_items: Vec<T> = response.json().with_context(|| format!("decode GitHub {endpoint}"))?;
+            let page_items: Vec<T> = response
+                .json()
+                .with_context(|| format!("decode GitHub {endpoint}"))?;
             let len = page_items.len();
             out.extend(page_items);
             if len < 100 {
@@ -315,12 +345,14 @@ impl GithubClient {
             merged: pull.merged_at.is_some(),
             head_sha: pull.head.sha.clone(),
             ci_state: if should_enrich {
-                self.check_state(&pull.head.sha).unwrap_or_else(|_| "unknown".into())
+                self.check_state(&pull.head.sha)
+                    .unwrap_or_else(|_| "unknown".into())
             } else {
                 "n/a".into()
             },
             review_state: if should_enrich {
-                self.review_state(pull.number).unwrap_or_else(|_| "unknown".into())
+                self.review_state(pull.number)
+                    .unwrap_or_else(|_| "unknown".into())
             } else {
                 "n/a".into()
             },
@@ -344,7 +376,11 @@ impl GithubClient {
         if payload.check_runs.is_empty() {
             return Ok("unknown".into());
         }
-        if payload.check_runs.iter().any(|run| run.status != "completed") {
+        if payload
+            .check_runs
+            .iter()
+            .any(|run| run.status != "completed")
+        {
             return Ok("pending".into());
         }
         if payload.check_runs.iter().any(|run| {
@@ -363,7 +399,10 @@ impl GithubClient {
             "https://api.github.com/repos/{}/pulls/{}/reviews?per_page=100",
             self.repository, number
         );
-        let response = self.auth(self.client.get(url)).send().context("read PR reviews")?;
+        let response = self
+            .auth(self.client.get(url))
+            .send()
+            .context("read PR reviews")?;
         if !response.status().is_success() {
             return Ok("unknown".into());
         }
@@ -413,11 +452,16 @@ fn parse_tree_relation(body: &str) -> TreeRelation {
         if lower.starts_with("parent:") {
             relation.parent = parse_first_number(line);
         } else if lower.starts_with("depends_on:") {
-            for number in parse_csv_numbers(line.split_once(':').map(|(_, value)| value).unwrap_or("")) {
+            for number in
+                parse_csv_numbers(line.split_once(':').map(|(_, value)| value).unwrap_or(""))
+            {
                 dependencies.insert(number);
             }
         } else if lower.starts_with("required:") {
-            let value = line.split_once(':').map(|(_, value)| value.trim()).unwrap_or("true");
+            let value = line
+                .split_once(':')
+                .map(|(_, value)| value.trim())
+                .unwrap_or("true");
             relation.required = !value.eq_ignore_ascii_case("false");
         } else if lower.starts_with("parent issue:") || line.starts_with("父 Issue:") {
             relation.parent = parse_first_number(line);
@@ -441,14 +485,11 @@ fn parse_tree_relation(body: &str) -> TreeRelation {
 }
 
 fn parse_first_number(value: &str) -> Option<u64> {
-    extract_issue_numbers(value)
-        .into_iter()
-        .next()
-        .or_else(|| {
-            value
-                .split_once(':')
-                .and_then(|(_, tail)| tail.trim().parse::<u64>().ok())
-        })
+    extract_issue_numbers(value).into_iter().next().or_else(|| {
+        value
+            .split_once(':')
+            .and_then(|(_, tail)| tail.trim().parse::<u64>().ok())
+    })
 }
 
 fn parse_csv_numbers(value: &str) -> Vec<u64> {
