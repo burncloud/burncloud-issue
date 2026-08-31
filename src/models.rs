@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -183,16 +183,19 @@ impl ProjectSnapshot {
     }
 
     pub fn root_issues_for_milestone(&self, milestone: Option<u64>) -> Vec<&IssueSummary> {
-        let numbers: HashSet<u64> = self.issues.iter().map(|issue| issue.number).collect();
         let mut roots = self
             .issues
             .iter()
             .filter(|issue| {
-                issue.milestone_number == milestone
-                    && issue
-                        .parent
-                        .map(|parent| !numbers.contains(&parent))
-                        .unwrap_or(true)
+                if issue.milestone_number != milestone {
+                    return false;
+                }
+                let parent_in_same_group = issue
+                    .parent
+                    .and_then(|parent| self.issue(parent))
+                    .map(|parent| parent.milestone_number == milestone)
+                    .unwrap_or(false);
+                !parent_in_same_group
             })
             .collect::<Vec<_>>();
         roots.sort_by_key(|issue| issue.number);
@@ -225,14 +228,6 @@ impl ProjectSnapshot {
         progress_for(descendants.into_iter().filter(|issue| issue.required))
     }
 
-    pub fn status_counts(&self) -> HashMap<&'static str, usize> {
-        let mut out = HashMap::new();
-        for issue in &self.issues {
-            *out.entry(issue.status.label()).or_insert(0) += 1;
-        }
-        out
-    }
-
     fn collect_descendants<'a>(
         &'a self,
         root: u64,
@@ -260,11 +255,11 @@ fn progress_for<'a>(issues: impl Iterator<Item = &'a IssueSummary>) -> (usize, u
             done += 1;
         }
     }
-    let percent = if total == 0 {
-        0
-    } else {
-        ((done * 100) / total).min(100) as u16
-    };
+    let percent = done
+        .saturating_mul(100)
+        .checked_div(total)
+        .unwrap_or(0)
+        .min(100) as u16;
     (done, total, percent)
 }
 
