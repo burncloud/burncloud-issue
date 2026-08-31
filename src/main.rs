@@ -20,13 +20,13 @@ use app::App;
 
 #[derive(Debug, Parser)]
 #[command(name = "burncloud-issue")]
-#[command(about = "Conversational AI Issue Factory for BurnCloud")]
+#[command(about = "Issue dependency tree and execution-status console for BurnCloud")]
 struct Args {
-    /// GitHub repository that will receive the generated Issue.
+    /// GitHub repository whose Issue/PR task graph is displayed and managed.
     #[arg(long, default_value = "burncloud/burncloud")]
     repo: String,
 
-    /// Local read-only source repository that Codex may inspect for evidence.
+    /// Local read-only source repository that Codex may inspect when drafting a bounded Issue.
     #[arg(long, default_value = "../burncloud")]
     local_repo: PathBuf,
 
