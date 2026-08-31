@@ -696,7 +696,11 @@ impl App {
                 self.create = None;
                 match result {
                     Ok(issue) => {
-                        self.status = format!("已创建 Issue #{}，正在刷新任务树…", issue.number);
+                        let created_url = issue.html_url.clone();
+                        self.status = format!(
+                            "已创建 Issue #{} · {}，正在刷新任务树…",
+                            issue.number, created_url
+                        );
                         self.created_issue = Some(issue);
                         self.screen = Screen::Tree;
                         self.focus = Focus::Tree;
@@ -877,7 +881,7 @@ impl App {
             if issue.required { "yes" } else { "optional" },
             issue.milestone_title.as_deref().unwrap_or("None")
         );
-        if issue.is_epic || self.snapshot.children_of(number).len() > 0 {
+        if issue.is_epic || !self.snapshot.children_of(number).is_empty() {
             out.push_str(&format!("子树进度: {done}/{total} ({percent}%)\n"));
         }
         if checklist > 0 {
